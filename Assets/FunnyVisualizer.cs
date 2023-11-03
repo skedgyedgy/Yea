@@ -1,7 +1,11 @@
 using UnityEngine;
 
+public abstract class Visualizer : MonoBehaviour {
+    public float Loudness { get; protected set; } = 0;
+}
+
 [RequireComponent (typeof (SpriteRenderer))]
-public class FunnyVisualizer : MonoBehaviour {
+public class FunnyVisualizer : Visualizer {
     [SerializeField]
     private AudioSource _audioSource;
     [SerializeField]
@@ -10,10 +14,17 @@ public class FunnyVisualizer : MonoBehaviour {
     private FFTWindow fftWindow = FFTWindow.Rectangular;
     [SerializeField]
     private float heightMod = 1;
+    [SerializeField]
+    private float decaySpeed = 5;
+    [SerializeField]
+    private float attackSpeed = 20;
 
     private SpriteRenderer baseSprite;
     private Transform[] bands;
     private float[] maxValues;
+
+    [SerializeField]
+    private Sprite spriteOverride;
 
     private void Start () {
         baseSprite = GetComponent<SpriteRenderer> ();
@@ -29,11 +40,12 @@ public class FunnyVisualizer : MonoBehaviour {
         bands = new Transform[bandCount - 1];
 
         for (int i = 0; i < bandCount - 1; i++) {
-            Sprite newSprite = Sprite.Create (tex, new Rect (rect.x + (bandRectWidth * i), rect.y, bandRectWidth, rect.height), Vector2.zero, baseSprite.sprite.pixelsPerUnit, 0, SpriteMeshType.FullRect);
+            Sprite newSprite = spriteOverride != null ? spriteOverride : Sprite.Create (tex, new Rect (rect.x + (bandRectWidth * i), rect.y, bandRectWidth, rect.height), Vector2.zero, baseSprite.sprite.pixelsPerUnit, 0, SpriteMeshType.FullRect);
             Transform newBand = new GameObject ("Band" + i, typeof (SpriteRenderer)).transform;
             newBand.SetParent (transform, false);
             newBand.localPosition = new (bandTransformWidth * i, 0);
             newBand.localScale = new (1, 1);
+            newBand.GetComponent<SpriteRenderer> ().drawMode = baseSprite.drawMode;
             newBand.GetComponent<SpriteRenderer> ().sprite = newSprite;
 
             bands[i] = newBand;
@@ -44,12 +56,17 @@ public class FunnyVisualizer : MonoBehaviour {
     private void Update () {
         AudioListener.GetSpectrumData (spectrum, 0, fftWindow);
 
+        float total = 0;
         for (int i = 0; i < spectrum.Length - 1; i++) {
             float val = spectrum[i + 1];
             float max = maxValues[i];
             if (val > max) { maxValues[i] = val; max = val; }
             float oldHeight = bands[i].localScale.y;
-            bands[i].localScale = new (1, Mathf.Lerp (oldHeight, Mathf.Min (val * heightMod / (max > 0 ? max : 1), 1), val > oldHeight ? Time.deltaTime * 20 : Time.deltaTime * 5)); ;
+            float newHeight = Mathf.Lerp (oldHeight, Mathf.Min (val * heightMod / (max > 0 ? max : 1), 1), val > oldHeight ? Time.deltaTime * attackSpeed : Time.deltaTime * decaySpeed);
+            bands[i].localScale = new (1, newHeight);
+            total += newHeight;
         }
+
+        Loudness = total / (spectrum.Length - 1);
     }
 }
